@@ -20,8 +20,8 @@ export default function ExperienceCanvas(props) {
         onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
       >
         {/* Placeholder lights: we will replace these with the dream-scene lighting */}
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[3, 4, 5]} intensity={1.4} />
+        <ambientLight intensity={1.4} />
+        <directionalLight position={[3, 4, 5]} intensity={3.1} />
 
         {/* Suspense: shows nothing while models/textures load, then reveals the scene */}
         <Suspense fallback={null}>
