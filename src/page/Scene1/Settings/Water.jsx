@@ -16,7 +16,7 @@ import { terrainHeight, LAKE, WATER_LEVEL, DOOR_POS } from "./TerrainHeight";
 // ─────────────────────────────────────────────────────────────
 
 // Colours measured from new_design_1.png (sRGB hex).
-const DEEP_COLOR = "#25688f"; // body colour in the lake centre
+const DEEP_COLOR = "#87CEFA"; // body colour in the lake centre
 const SHALLOW_COLOR = "#5f9fae"; // teal-ish body colour near the shore
 const SKY_HORIZON = "#a9cce0"; // reflected sky near the horizon
 const SKY_ZENITH = "#5b93c0"; // reflected sky high up
@@ -103,9 +103,9 @@ const fragmentShader = /* glsl */ `
 
     // Stretched noise: low frequency along x, high along z. Seen from a low
     // camera angle this becomes thin horizontal streaks, like the reference.
-    float streakA = noise21(vec2(P.x * 0.9 + uTime * 0.03, P.z * 3.5 - uTime * 0.12));
-    float streakB = noise21(vec2(P.x * 1.7 - uTime * 0.05, P.z * 6.5 + uTime * 0.20));
-    N.z += (streakA - 0.5) * 0.045 + (streakB - 0.5) * 0.02;
+    float streakA = noise21(vec2(P.x * 0.9 + uTime * 0.03, P.z * 7.0 - uTime * 0.12));
+    float streakB = noise21(vec2(P.x * 1.7 - uTime * 0.05, P.z * 13.0 + uTime * 0.20));
+    N.z += (streakA - 0.5) * 0.07 + (streakB - 0.5) * 0.035;
     N.x += (streakA - 0.5) * 0.01;
 
     // Cursor ripples (unchanged logic): rings that fade as they travel.
@@ -136,7 +136,7 @@ const fragmentShader = /* glsl */ `
     refl = mix(refl, uHill, hillBand);
 
     // Soft brightness variation: bright crests and darker troughs.
-    refl *= 0.94 + streakA * 0.12;
+    refl *= 0.90 + streakA * 0.20;
 
     // Door reflection: a vertical streak, broken into slices by the ripples.
     if (R.z < -0.001) {
@@ -148,7 +148,7 @@ const fragmentShader = /* glsl */ `
         float rel = H.x - uDoorPos.x + sway + slice;
         float inX = 1.0 - smoothstep(uDoorHalfW - 0.30, uDoorHalfW + 0.30, abs(rel));
         float inY = smoothstep(-0.05, 0.16, H.y)
-                  * (1.0 - smoothstep(uDoorHeight - 0.55, uDoorHeight * 1.6, H.y));
+                  * (1.0 - smoothstep(uDoorHeight - 0.40, uDoorHeight + 0.02, H.y));
         float door = inX * inY;
         float slit = smoothstep(0.40, 0.50, rel) * (1.0 - smoothstep(0.78, 0.90, rel));
         vec3 doorCol = mix(uDoorColor, uDoorGlow, slit);
@@ -159,7 +159,7 @@ const fragmentShader = /* glsl */ `
 
     // 3. Water body -----------------------------------------------------
     float depth = max(vDepth, 0.0);
-    vec3 body = mix(uShallow, uDeep, smoothstep(0.05, 0.7, depth));
+    vec3 body = mix(uShallow, uDeep, smoothstep(0.05, 0.9, depth));
 
     // Fresnel: more reflection than before (the reference is mostly mirror).
     float facing = max(dot(N, V), 0.0);
@@ -206,7 +206,7 @@ export default function Water() {
       width,
       length,
       Math.round(width / CELL),
-      Math.round(length / CELL),
+      Math.round(length / CELL)
     );
     g.rotateX(-Math.PI / 2);
     g.translate(LAKE.x, WATER_LEVEL, LAKE.z);
@@ -219,10 +219,7 @@ export default function Water() {
     }
     g.setAttribute("aDepth", new THREE.BufferAttribute(depth, 1));
 
-    const ripples = Array.from(
-      { length: RIPPLES },
-      () => new THREE.Vector4(0, 0, 0, 0),
-    );
+    const ripples = Array.from({ length: RIPPLES }, () => new THREE.Vector4(0, 0, 0, 0));
 
     const m = new THREE.ShaderMaterial({
       vertexShader,
@@ -284,11 +281,7 @@ export default function Water() {
       const l = last.current;
       const moved = Math.hypot(ground.point.x - l.x, ground.point.z - l.z);
       if (moved > 0.9 && now - l.time > 0.12) {
-        const strength = THREE.MathUtils.clamp(
-          0.45 + ground.speed * 0.25,
-          0.45,
-          1,
-        );
+        const strength = THREE.MathUtils.clamp(0.45 + ground.speed * 0.25, 0.45, 1);
         ripples[l.next].set(ground.point.x, ground.point.z, 0, strength);
         l.next = (l.next + 1) % ripples.length;
         l.x = ground.point.x;

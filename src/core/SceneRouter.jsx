@@ -4,8 +4,8 @@ import PointerGround from "../page/Scene1/Settings/PointerGround";
 import Terrain from "../page/Scene1/Settings/Terrain";
 import Grass from "../page/Scene1/Settings/Grass";
 import Water from "../page/Scene1/Settings/Water";
-import DistantMeadow from "../page/Scene1/Settings/DistantMeadow";
 import Flowers from "../page/Scene1/Settings/Flowers";
+import Stones from "../page/Scene1/Settings/Stones";
 
 // Picks which 3D scene is mounted for the current phase.
 // Add HeroScene / EndingScene / BreakScene here as they get built.
@@ -19,8 +19,8 @@ export default function SceneRouter() {
           <CameraRig />
           <PointerGround />
           <Terrain />
-          <DistantMeadow />
           <Grass />
+          <Stones />
           <Flowers />
           <Water />
         </>

@@ -8,7 +8,7 @@ import { terrainHeight, WATER_LEVEL, LAKE } from "./TerrainHeight";
 
 // Idea : (GPU Instancing) Instead of creating a separate mesh for every blade, you tell the GPU to draw the same geometry repeatedly.Each instance receives its own data, including its position, height, width, rotation and random variation.
 
-const COUNT = 600000; // blades. Test on an integrated GPU; lower this first if it struggles.
+const COUNT = 250000; // blades. Test on an integrated GPU; lower this first if it struggles.
 const WIND = 0.15; // sway strength. 0 = perfectly still grass.
 const FADE_START = 14; // blades start thinning out this far from the camera...
 const FADE_END = 48; // ...and are all gone by here (the terrain colour carries the far meadow)
@@ -22,8 +22,8 @@ const SHORE_CLUMPS = 28; // small patches of grass around the lake rim
 const BLADES_PER_CLUMP = 700; // ~19,600 extra blades in total (about +2.6%)
 const TOTAL = COUNT + SHORE_CLUMPS * BLADES_PER_CLUMP; // sizes the data arrays
 
-const BASE_COLOR = "#35551C"; // Darker
-const TIP_COLOR = "#8BAE4B"; // Lighter
+const TIP_COLOR = "#c0b42f";// Lighter
+const BASE_COLOR = "#3B5420"; // Darker
 
 // Where blades may grow: a box around the camera path. Inside it, blades are
 // packed densely near the path and thin out away from it.
@@ -31,9 +31,9 @@ const REGION = { x0: -45, x1: 45, z0: 8, z1: -80 };
 const PATH_END_Z = -32; // the camera travels from z = 0 to here (see CameraRig)
 const SPREAD = 20; // density halves this far from the path
 
-const AMBIENT = 1.4;
-const SUN_INTENSITY = 3.1;
-const SUN_DIR = new THREE.Vector3(3, 4, 5).normalize();
+const AMBIENT = 1.0;
+const SUN_INTENSITY = 3.0;
+const SUN_DIR = new THREE.Vector3(-6, 10, 4).normalize();
 
 // Small seeded random generator: same grass on every reload (Math.random
 // would give a different field each time, which makes tuning impossible).

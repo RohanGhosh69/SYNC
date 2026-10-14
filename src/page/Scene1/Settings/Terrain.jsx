@@ -10,9 +10,13 @@ import { terrainHeight, WATER_LEVEL } from "./TerrainHeight";
 export const HORIZON_COLOR = "#E0F3FF";
 
 // Palette sampled from the reference image.
-const GRASS_DEEP = new THREE.Color("#527e13"); // foreground grass
-const GRASS_LIGHT = new THREE.Color("#80a241"); // sunlit hills
-const MUD = new THREE.Color("#959272"); // bank at the lake shore
+//const GRASS_DEEP = new THREE.Color("#526e13"); // foreground grass
+//const GRASS_LIGHT = new THREE.Color("#80a241"); // sunlit hills
+//const MUD = new THREE.Color("#959272"); // bank at the lake shore
+
+const GRASS_DEEP = new THREE.Color("#526B24");
+const GRASS_LIGHT = new THREE.Color("#A0B957");
+const MUD = new THREE.Color("#A29A78");
 
 // Size of the ground and how finely it is cut up.
 // Big enough that its edges are always inside the fog (fully hidden).
@@ -55,8 +59,10 @@ export default function Terrain() {
         0.5 * Math.sin(x * 0.07 + z * 0.05) * Math.cos(z * 0.09 - x * 0.03);
       c.copy(GRASS_DEEP).lerp(GRASS_LIGHT, patch);
 
-      // Steeper ground gets a bit darker (normal.y = 1 flat, 0 vertical).
-      c.multiplyScalar(0.75 + 0.25 * normal.getY(i));
+     // Subtle slope shading to retain the terrain's rolling shape.
+const slope = normal.getY(i);
+c.multiplyScalar(THREE.MathUtils.lerp(0.85, 1.0, slope));
+      
 
       // Muddy band right around the waterline.
       const shore =

@@ -1,6 +1,7 @@
 import { Canvas } from "@react-three/fiber";
 import { Suspense } from "react";
 import SceneRouter from "./SceneRouter";
+import CinematicBlur from "../page/Scene1/Settings/CinematicBlur";
 
 // ONE persistent 3D canvas for the whole website.
 // It is fixed behind the page, never unmounts, and every "page"
@@ -15,19 +16,38 @@ export default function ExperienceCanvas(props) {
       <Canvas
         dpr={[1, 2]} // sharp on retina, capped at 2x so it stays fast
         camera={{ position: [0, 0, 6], fov: 40 }}
-        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+        gl={{
+          antialias: true,
+          alpha: true,
+          powerPreference: "high-performance",
+        }}
         // fully transparent clear colour: whatever is behind the canvas shows through
         onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
       >
         {/* Placeholder lights: we will replace these with the dream-scene lighting */}
-        <ambientLight intensity={1.4} />
-        <directionalLight position={[3, 4, 5]} intensity={3.1} />
+        {/* Soft ambient lighting */}
+        <ambientLight intensity={0.7} />
+
+        {/* Warm sunlight coming from the upper-left */}
+        <directionalLight
+          position={[-6, 10, 4]}
+          intensity={2.0}
+          color="#FFF1D6"
+        />
+
+        {/* Gentle cool fill to preserve natural shadows */}
+        <directionalLight
+          position={[5, 4, -8]}
+          intensity={0.35}
+          color="#C9E5FF"
+        />
 
         {/* Suspense: shows nothing while models/textures load, then reveals the scene */}
         <Suspense fallback={null}>
           {/* props are passed straight through, so SceneRouter gets whatever App gives it */}
           <SceneRouter {...props} />
         </Suspense>
+        <CinematicBlur />
       </Canvas>
     </div>
   );

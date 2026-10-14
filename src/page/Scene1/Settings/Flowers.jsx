@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { ground } from "./PointerGround";
 import { terrainHeight, WATER_LEVEL } from "./TerrainHeight";
@@ -14,11 +15,40 @@ import { terrainHeight, WATER_LEVEL } from "./TerrainHeight";
 // the ground, nearby flowers LEAN TOWARD it and GLOW brighter.
 // ─────────────────────────────────────────────────────────────
 
-const WHITE_COUNT = 15000; // clusters. Lower this first if the integrated GPU struggles.
-const PINK_COUNT = 1000;
+const WHITE_COUNT = 5500; // clusters. Lower this first if the integrated GPU struggles.
 const WIND = 0.07; // sway strength
 const FADE_START = 20; // flowers start shrinking/thinning this far from the camera...
 const FADE_END = 62; // ...and are all gone by here
+
+// The 3 GLB flowers. Every model is 1 unit tall, so `height` is the average height in world units.
+const GLB_URL = "/model/flowers.glb";
+const COLOR_FLOWERS = [
+  {
+    node: "flower_purple",
+    cutout: true,
+    count: 1800,
+    seed: 47,
+    spread: 20,
+    patchPow: 2,
+    patchOffset: [-17, 21],
+    height: 0.45,
+    glow: "#e2b8ff",
+  },
+  {
+    node: "flower_red",
+    cutout: true,
+    count: 1000,
+    seed: 59,
+    spread: 18,
+    patchPow: 2,
+    patchOffset: [29, 11],
+    height: 0.55,
+    glow: "#ff8a8a",
+  },
+];
+const COLOR_WIND = WIND * 1.6; // wind and lean are fractions of the flower's height, so these are tuned for 1-unit models
+const COLOR_LEAN = 0.4;
+const COLOR_RADIUS = 3.2;
 
 // Same field box and camera path as Grass.jsx.
 const REGION = { x0: -45, x1: 45, z0: 8, z1: -80 };
@@ -62,14 +92,21 @@ function groundInfo(x, z) {
   _n.set(
     terrainHeight(x - e, z) - terrainHeight(x + e, z),
     2 * e,
-    terrainHeight(x, z - e) - terrainHeight(x, z + e)
+    terrainHeight(x, z - e) - terrainHeight(x, z + e),
   ).normalize();
   const sun = Math.max(0, _n.dot(SUN_DIR));
   return { shade: (AMBIENT + SUN_INTENSITY * sun) / Math.PI, flat: _n.y };
 }
 
 // Where every instance goes, plus its random size / yaw.
-function scatter({ count, seed, spread, patchPow, makeParams }) {
+function scatter({
+  count,
+  seed,
+  spread,
+  patchPow,
+  patchOffset = [0, 0],
+  makeParams,
+}) {
   const rand = mulberry32(seed);
   const offsets = new Float32Array(count * 3);
   const params = new Float32Array(count * 4); // scale, yaw, random 0..1, spare
@@ -83,7 +120,12 @@ function scatter({ count, seed, spread, patchPow, makeParams }) {
     const z = THREE.MathUtils.lerp(REGION.z0, REGION.z1, rand());
 
     // Cheap tests first: path distance and patches.
-    if (rand() > pathDensity(x, z, spread) * Math.pow(patchWeight(x, z), patchPow)) continue;
+    if (
+      rand() >
+      pathDensity(x, z, spread) *
+        Math.pow(patchWeight(x + patchOffset[0], z + patchOffset[1]), patchPow)
+    )
+      continue;
 
     const y = terrainHeight(x, z);
     if (y < WATER_LEVEL + 0.06) continue; // keep roots out of the lake
@@ -189,19 +231,19 @@ function whiteClusterFlowers() {
   });
 }
 
-// One pink flower: tall stem, big head tipped toward the camera.
-const PINK_FLOWER = [
-  { x: 0, z: 0, h: 0.6, dx: 0.03, dz: 0.02, r: 0.11, tilt: 0.9, phi: 0, stemW: 0.018 },
-];
-
 // ---- Shaders ----------------------------------------------------------
 
 const vertexShader = /* glsl */ `
   attribute vec3 aOffset;   // where this instance stands (world)
   attribute vec4 aParams;   // x scale, y yaw, z random
   attribute float aShade;   // baked ground brightness
-  attribute float aTone;    // which part of the flower (see buildFlowerGeometry)
-  attribute float aBend;    // 0 at the root .. 1 at the top
+  #ifdef FLOWER_TEX
+  varying vec2 vUv;
+  varying float vH;
+  #else
+    attribute float aTone;
+    attribute float aBend;
+  #endif
 
   uniform float uTime;
   uniform float uWind;
@@ -241,7 +283,12 @@ const vertexShader = /* glsl */ `
     local *= sc * life;
 
     // 3. Wind: tips move, roots stay.
-    float bendW = aBend * aBend;
+    #ifdef FLOWER_TEX
+    float bendH = clamp(position.y, 0.0, 1.0);
+#else
+    float bendH = aBend;
+#endif
+    float bendW = bendH * bendH;
     float wave = sin(uTime * 1.5 + aOffset.x * 0.35 + aOffset.z * 0.27 + rnd * 6.28);
     float gust = sin(uTime * 0.6 + aOffset.x * 0.07 - aOffset.z * 0.09);
     local.xz += vec2(wave * 0.6 + gust, wave * 0.35) * uWind * bendW * sc;
@@ -256,7 +303,12 @@ const vertexShader = /* glsl */ `
     vec4 mvPosition = modelViewMatrix * vec4(aOffset + local, 1.0);
     gl_Position = projectionMatrix * mvPosition;
 
+    #ifdef FLOWER_TEX
+    vUv = uv;
+    vH = clamp(position.y, 0.0, 1.0);
+#else
     vTone = aTone;
+#endif
     vShade = aShade;
     vRand = rnd;
     vGlow = hover;
@@ -302,9 +354,56 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
+// Fragment shader for the GLB flowers: texture colour + the same shading and glow.
+const texFragmentShader = /* glsl */ `
+  uniform sampler2D uMap;
+  uniform vec3 uGlow;
+
+  varying vec2 vUv;
+  varying float vH;
+  varying float vShade;
+  varying float vRand;
+  varying float vGlow;
+
+  #include <fog_pars_fragment>
+
+  void main() {
+    vec4 tex = texture2D(uMap, vUv);
+
+  #ifdef ALPHA_CUTOUT
+    if (tex.a < 0.5) discard; // hard cut-out: no blending, no sorting
+  #endif
+
+    vec3 col = tex.rgb;
+
+    // Ground shading, softened like the white petals, plus a fake "shadow near the soil".
+    col *= mix(1.0, vShade, 0.6);
+    col *= mix(0.55, 1.0, smoothstep(0.0, 0.45, vH));
+    col *= 0.92 + 0.16 * vRand; // per-instance variation
+
+    // Hover glow only on the upper part (the bloom), not the stem.
+    float head = smoothstep(0.4, 0.85, vH);
+    col = col * (1.0 + 0.35 * vGlow * head) + uGlow * vGlow * 0.30 * head;
+
+    gl_FragColor = vec4(col, 1.0);
+
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+    #include <fog_fragment>
+  }
+`;
+
 // ---- Building one layer (geometry + material) -------------------------
 
-function makeLayer({ flowers, petals, scatterCfg, colors, radius, lean, cursor }) {
+function makeLayer({
+  flowers,
+  petals,
+  scatterCfg,
+  colors,
+  radius,
+  lean,
+  cursor,
+}) {
   const data = scatter(scatterCfg);
   const base = buildFlowerGeometry(flowers, petals);
 
@@ -313,7 +412,10 @@ function makeLayer({ flowers, petals, scatterCfg, colors, radius, lean, cursor }
   g.setAttribute("position", new THREE.BufferAttribute(base.position, 3));
   g.setAttribute("aTone", new THREE.BufferAttribute(base.tone, 1));
   g.setAttribute("aBend", new THREE.BufferAttribute(base.bend, 1));
-  g.setAttribute("aOffset", new THREE.InstancedBufferAttribute(data.offsets, 3));
+  g.setAttribute(
+    "aOffset",
+    new THREE.InstancedBufferAttribute(data.offsets, 3),
+  );
   g.setAttribute("aParams", new THREE.InstancedBufferAttribute(data.params, 4));
   g.setAttribute("aShade", new THREE.InstancedBufferAttribute(data.shade, 1));
   g.instanceCount = data.count;
@@ -352,7 +454,120 @@ function makeLayer({ flowers, petals, scatterCfg, colors, radius, lean, cursor }
   return { geometry: g, material: m };
 }
 
-// ---- Component --------------------------------------------------------
+// ---- Building the GLB flower layers ------------------------------------
+// One colour = ONE scatter, but one draw call per primitive of the model
+// (blue and yellow have 2: stem + head), because a draw call binds only one texture.
+function makeColorLayers(scene, cursor) {
+  const layers = [];
+
+  for (const cfg of COLOR_FLOWERS) {
+    const node = scene.getObjectByName(cfg.node);
+    const data = scatter({
+      count: cfg.count,
+      seed: cfg.seed,
+      spread: cfg.spread,
+      patchPow: cfg.patchPow,
+      patchOffset: cfg.patchOffset,
+      // scale = height (model is 1 tall) +-30%, any yaw, random 0..1
+      makeParams: (rand) => [
+        cfg.height * (0.7 + 0.6 * rand()),
+        rand() * Math.PI * 2,
+        rand(),
+        0,
+      ],
+    });
+
+    // Shared by every part of this flower, so its stem and head always stand together.
+    const offsets = new THREE.InstancedBufferAttribute(data.offsets, 3);
+    const params = new THREE.InstancedBufferAttribute(data.params, 4);
+    const shade = new THREE.InstancedBufferAttribute(data.shade, 1);
+
+    // traverse() visits the node and its children: a Group for blue/yellow, one Mesh for purple.
+    node.traverse((mesh) => {
+      if (!mesh.isMesh) return;
+
+      const src = mesh.geometry;
+      const g = new THREE.InstancedBufferGeometry();
+      g.setIndex(src.index);
+      g.setAttribute("position", src.attributes.position);
+      g.setAttribute("uv", src.attributes.uv);
+      g.setAttribute("aOffset", offsets);
+      g.setAttribute("aParams", params);
+      g.setAttribute("aShade", shade);
+      g.instanceCount = data.count;
+
+      const tex = mesh.material.map; // the base-colour texture the GLB already loaded
+      tex.anisotropy = 4; // sharper cards seen at a slant, cheap
+
+      const m = new THREE.ShaderMaterial({
+        vertexShader,
+        fragmentShader: texFragmentShader,
+        defines: cfg.cutout
+          ? { FLOWER_TEX: "", ALPHA_CUTOUT: "" }
+          : { FLOWER_TEX: "" },
+        side: THREE.DoubleSide,
+        fog: true,
+        toneMapped: false,
+        uniforms: THREE.UniformsUtils.merge([
+          THREE.UniformsLib.fog,
+          {
+            uTime: { value: 0 },
+            uWind: { value: COLOR_WIND },
+            uFadeStart: { value: FADE_START },
+            uFadeEnd: { value: FADE_END },
+            uRadius: { value: COLOR_RADIUS },
+            uLean: { value: COLOR_LEAN },
+            uCursor: { value: cursor },
+            uMap: { value: tex },
+            uGlow: { value: new THREE.Color(cfg.glow) },
+          },
+        ]),
+      });
+      // merge() CLONES colours, vectors AND textures. Re-attach the shared originals,
+      // same trap as the cursor in makeLayer (a cloned texture would be uploaded again).
+      m.uniforms.uCursor.value = cursor;
+      m.uniforms.uMap.value = tex;
+
+      layers.push({ geometry: g, material: m });
+    });
+  }
+  return layers;
+}
+
+// Component
+
+// Loads the GLB and draws the colour flowers. It is its own component so it can
+// SUSPEND (wait for the download) without hiding the rest of the meadow.
+function ColorFlowers({ cursor }) {
+  const { scene } = useGLTF(GLB_URL);
+  const layers = useMemo(() => makeColorLayers(scene, cursor), [scene, cursor]);
+
+  // Free our geometry and materials. The textures belong to useGLTF's cache, so we leave them.
+  useEffect(() => {
+    return () => {
+      for (const l of layers) {
+        l.geometry.dispose();
+        l.material.dispose();
+      }
+    };
+  }, [layers]);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    for (const l of layers) l.material.uniforms.uTime.value = t;
+  });
+
+  return layers.map((l, i) => (
+    <mesh
+      key={i}
+      geometry={l.geometry}
+      material={l.material}
+      frustumCulled={false}
+    />
+  ));
+}
+
+useGLTF.preload(GLB_URL); // start downloading as soon as this file is imported
 
 export default function Flowers() {
   const layers = useMemo(() => {
@@ -367,7 +582,12 @@ export default function Flowers() {
         seed: 11,
         spread: 30, // wide: whites cover most of the meadow
         patchPow: 1, // strong patches
-        makeParams: (rand) => [0.8 + 0.6 * rand(), rand() * Math.PI * 2, rand(), 0],
+        makeParams: (rand) => [
+          0.8 + 0.6 * rand(),
+          rand() * Math.PI * 2,
+          rand(),
+          0,
+        ],
       },
       colors: {
         stemBase: "#35551C",
@@ -382,38 +602,13 @@ export default function Flowers() {
       cursor,
     });
 
-    const pink = makeLayer({
-      flowers: PINK_FLOWER,
-      petals: 9,
-      scatterCfg: {
-        count: PINK_COUNT,
-        seed: 23,
-        spread: 18, // pinks stay closer to the camera path
-        patchPow: 0.5, // gentler patches than the whites
-        // Mostly 0.7-1x tall, a few up to ~1.8x (cubic curve gives a heavy tail).
-        // Yaw only +-0.9 rad, so heads face roughly toward the camera.
-        makeParams: (rand) => [0.7 + 1.1 * Math.pow(rand(), 3), (rand() - 0.5) * 1.8, rand(), 0],
-      },
-      colors: {
-        stemBase: "#35551C",
-        stemTip: "#5f8f2f",
-        center: "#f4b83c",
-        petalInner: "#e83f8f",
-        petalTip: "#ff86bd",
-        glow: "#ff9ccf",
-      },
-      radius: 3.2,
-      lean: 0.28,
-      cursor,
-    });
-
-    return { white, pink, cursor };
+    return { white, cursor };
   }, []);
 
   // Free GPU memory if the scene unmounts.
   useEffect(() => {
     return () => {
-      for (const l of [layers.white, layers.pink]) {
+      for (const l of [layers.white]) {
         l.geometry.dispose();
         l.material.dispose();
       }
@@ -423,7 +618,6 @@ export default function Flowers() {
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
     layers.white.material.uniforms.uTime.value = t;
-    layers.pink.material.uniforms.uTime.value = t;
 
     // Hover strength eases in fast and out slowly, so flowers spring back gently.
     const cursor = layers.cursor;
@@ -446,8 +640,14 @@ export default function Flowers() {
 
   return (
     <>
-      <mesh geometry={layers.white.geometry} material={layers.white.material} frustumCulled={false} />
-      <mesh geometry={layers.pink.geometry} material={layers.pink.material} frustumCulled={false} />
+      <mesh
+        geometry={layers.white.geometry}
+        material={layers.white.material}
+        frustumCulled={false}
+      />
+      <Suspense fallback={null}>
+        <ColorFlowers cursor={layers.cursor} />
+      </Suspense>
     </>
   );
 }
