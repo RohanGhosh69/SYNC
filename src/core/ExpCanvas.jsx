@@ -1,7 +1,9 @@
 import { Canvas } from "@react-three/fiber";
 import { Suspense } from "react";
+import { NeutralToneMapping } from "three";
 import SceneRouter from "./SceneRouter";
-import CinematicBlur from "../page/Scene1/Settings/CinematicBlur";
+import BlurOverlay from "../page/Scene1/Settings/BlurOverlay";
+import DoorTransition from "../page/Scene1/Settings/DoorTransition";
 
 // ONE persistent 3D canvas for the whole website.
 // It is fixed behind the page, never unmounts, and every "page"
@@ -20,35 +22,20 @@ export default function ExperienceCanvas(props) {
           antialias: true,
           alpha: true,
           powerPreference: "high-performance",
+          toneMapping: NeutralToneMapping,
         }}
         // fully transparent clear colour: whatever is behind the canvas shows through
         onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
       >
-        {/* Placeholder lights: we will replace these with the dream-scene lighting */}
-        {/* Soft ambient lighting */}
-        <ambientLight intensity={0.7} />
-
-        {/* Warm sunlight coming from the upper-left */}
-        <directionalLight
-          position={[-6, 10, 4]}
-          intensity={2.0}
-          color="#FFF1D6"
-        />
-
-        {/* Gentle cool fill to preserve natural shadows */}
-        <directionalLight
-          position={[5, 4, -8]}
-          intensity={0.35}
-          color="#C9E5FF"
-        />
 
         {/* Suspense: shows nothing while models/textures load, then reveals the scene */}
         <Suspense fallback={null}>
           {/* props are passed straight through, so SceneRouter gets whatever App gives it */}
           <SceneRouter {...props} />
         </Suspense>
-        <CinematicBlur />
       </Canvas>
+      <DoorTransition />
+    <BlurOverlay />
     </div>
   );
 }

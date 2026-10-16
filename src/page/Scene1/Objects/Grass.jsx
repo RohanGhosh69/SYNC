@@ -1,14 +1,16 @@
 import { useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { ground } from "./PointerGround";
-import { terrainHeight, WATER_LEVEL, LAKE } from "./TerrainHeight";
+import { ground } from "../Settings/PointerGround";
+import { terrainHeight, WATER_LEVEL, LAKE } from "../Environment/TerrainHeight";
+import { LIGHTING } from "../Settings/LightConfig";
+import { CLOUD_SHADOW_GLSL } from "../Environment/CloudShadow";
 
 // Grass: tens of thousands of grass blades drawn in ONE draw call.
 
 // Idea : (GPU Instancing) Instead of creating a separate mesh for every blade, you tell the GPU to draw the same geometry repeatedly.Each instance receives its own data, including its position, height, width, rotation and random variation.
 
-const COUNT = 250000; // blades. Test on an integrated GPU; lower this first if it struggles.
+const COUNT = 350000; // blades. Test on an integrated GPU; lower this first if it struggles.
 const WIND = 0.15; // sway strength. 0 = perfectly still grass.
 const FADE_START = 14; // blades start thinning out this far from the camera...
 const FADE_END = 48; // ...and are all gone by here (the terrain colour carries the far meadow)
@@ -22,18 +24,16 @@ const SHORE_CLUMPS = 28; // small patches of grass around the lake rim
 const BLADES_PER_CLUMP = 700; // ~19,600 extra blades in total (about +2.6%)
 const TOTAL = COUNT + SHORE_CLUMPS * BLADES_PER_CLUMP; // sizes the data arrays
 
-const TIP_COLOR = "#c0b42f";// Lighter
-const BASE_COLOR = "#3B5420"; // Darker
+const TIP_COLOR = "#B2C846"; //Golden-yellow
+const BASE_COLOR = "#3F7028"; // Deep-green
+const BACK_LIGHT = 0.1;
+const SHADE_COLOR = "#A9BFD9"; // cool tint at the blade roots (sky-lit shade)
 
 // Where blades may grow: a box around the camera path. Inside it, blades are
 // packed densely near the path and thin out away from it.
 const REGION = { x0: -45, x1: 45, z0: 8, z1: -80 };
 const PATH_END_Z = -32; // the camera travels from z = 0 to here (see CameraRig)
 const SPREAD = 20; // density halves this far from the path
-
-const AMBIENT = 1.0;
-const SUN_INTENSITY = 3.0;
-const SUN_DIR = new THREE.Vector3(-6, 10, 4).normalize();
 
 // Small seeded random generator: same grass on every reload (Math.random
 // would give a different field each time, which makes tuning impossible).
@@ -54,21 +54,10 @@ function density(x, z) {
   return 1 / (1 + (d / SPREAD) * (d / SPREAD));
 }
 
-// Brightness of the ground at (x, z), from its slope (same maths as a lit surface).
-function groundShade(x, z) {
-  const e = 0.6;
-  const nx = terrainHeight(x - e, z) - terrainHeight(x + e, z);
-  const nz = terrainHeight(x, z - e) - terrainHeight(x, z + e);
-  const n = new THREE.Vector3(nx, 2 * e, nz).normalize();
-  const sun = Math.max(0, n.dot(SUN_DIR));
-  return (AMBIENT + SUN_INTENSITY * sun) / Math.PI;
-}
-
 function buildBlades() {
   const rand = mulberry32(2026);
   const offsets = new Float32Array(TOTAL * 3); // root position of each blade
   const params = new Float32Array(TOTAL * 4); // height, width, yaw, random 0..1
-  const shade = new Float32Array(TOTAL); // baked ground brightness
 
   let n = 0;
   let tries = 0;
@@ -99,7 +88,6 @@ function buildBlades() {
       ],
       n * 4,
     );
-    shade[n] = groundShade(x, z);
     n++;
   }
 
@@ -134,11 +122,10 @@ function buildBlades() {
         ],
         n * 4,
       );
-      shade[n] = groundShade(x, z);
       n++;
     }
   }
-  return { offsets, params, shade, count: n };
+  return { offsets, params, count: n };
 }
 
 // ---- Shaders ----------------------------------------------------------
@@ -146,21 +133,28 @@ function buildBlades() {
 const vertexShader = /* glsl */ `
   attribute vec3 aOffset;   // blade root, world position
   attribute vec4 aParams;   // x height, y width, z yaw, w random
-  attribute float aShade;   // baked ground brightness
 
   uniform float uTime;
   uniform float uWind;
   uniform float uRadius;
   uniform float uFadeStart;
   uniform float uFadeEnd;
-  uniform vec3 uTrail[10];  // recent cursor points: x = world x, y = world z, z = strength
+  uniform vec3 uTrail[10];  // recent cursor points: x = world x, y = world z, z = strength 
 
+  uniform vec3 uSunDirection;
+  uniform float uAmbient;
+  uniform float uSunIntensity;
+  varying float vBack;
   varying float vT;
   varying float vShade;
   varying float vRand;
   varying float vPatch;
 
   #include <fog_pars_vertex>
+
+  ${CLOUD_SHADOW_GLSL}
+
+  varying vec3 vCloud;
 
   void main() {
     float height = aParams.x;
@@ -212,8 +206,27 @@ const vertexShader = /* glsl */ `
     gl_Position = projectionMatrix * mvPosition;
 
     vT = p.y;
-    vShade = aShade;
+   // Fake blade normal: the blade is a flat strip along (c, 0, -s), so it
+    // faces sideways along (s, 0, c). Blend toward "up" so it behaves like
+    // a slightly curved surface instead of a flat card.
+    vec3 bladeNormal = normalize(vec3(s * 0.7, 0.6, c * 0.7));
+    // abs(): both faces of a blade catch the sun (blades are two-sided).
+    float sunAmount = abs(dot(bladeNormal, uSunDirection));
+vShade = clamp(
+  uAmbient + uSunIntensity * sunAmount * 0.25,
+  0.0,
+  1.5
+);
+
     vRand = rnd;
+
+    // Cloud shadow at this blade's root: (1,1,1) in sun, darker/cooler in shade.
+    vCloud = cloudShadeMul(aOffset.xz, uTime);
+
+    // Backlight: 1 when we look straight toward the sun through this blade,
+    // fading to 0 as we look away. pow() tightens the glow.
+    vec3 viewDir = normalize(aOffset + local - cameraPosition);
+    vBack = pow(max(dot(viewDir, uSunDirection), 0.0), 3.0);
     // Large soft patches of lighter / deeper grass across the meadow (0..1).
     vPatch = 0.5 + 0.5 * sin(aOffset.x * 0.13 + aOffset.z * 0.09) * cos(aOffset.z * 0.17 - aOffset.x * 0.05);
 
@@ -224,6 +237,11 @@ const vertexShader = /* glsl */ `
 const fragmentShader = /* glsl */ `
   uniform vec3 uBase;
   uniform vec3 uTip;
+  uniform vec3 uSunColor;
+  uniform vec3 uShadeColor;
+  uniform float uBackLight;
+  varying vec3 vCloud;
+  varying float vBack;
 
   varying float vT;
   varying float vShade;
@@ -233,10 +251,35 @@ const fragmentShader = /* glsl */ `
   #include <fog_pars_fragment>
 
   void main() {
-    vec3 col = mix(uBase, uTip, pow(vT, 0.85));   // dark root to light tip
-    col *= mix(0.78, 1.12, vPatch);               // meadow-scale light / deep patches
-    col *= (0.85 + 0.3 * vRand) * vShade;         // per-blade variation x ground lighting
-    gl_FragColor = vec4(col, 1.0);
+   // Natural green base with golden-green tips.
+vec3 col = mix(uBase, uTip, pow(vT, 1.15));
+
+// Softer variation across the meadow.
+col *= mix(0.90, 1.06, vPatch);
+
+// Subtle variation between individual blades.
+col *= 0.94 + 0.12 * vRand;
+
+  // Apply shared lighting.
+  vec3 litColor = col * vShade;
+
+  // Root shading: darker and cooler where blades meet the ground.
+  // lowT is 0 at the root and reaches 1 about 55% of the way up.
+  float lowT = smoothstep(0.0, 0.55, vT);
+  litColor *= mix(0.5, 1.0, lowT);                // 0.5 = how dark the root gets
+  litColor *= mix(uShadeColor, vec3(1.0), lowT);  // cool tint at the root
+
+  // Add a subtle warm sunlight tint.
+ litColor *= mix(vec3(1.0), uSunColor, 0.35);
+
+  // Backlight: tips glow warm when we look toward the sun.
+  // vT * vT keeps the glow on the upper part of each blade.
+  litColor += uSunColor * uBackLight * vBack * vT * vT;
+
+  // Cloud shadow: darker and cooler inside a drifting shadow patch.
+  litColor *= vCloud;
+ 
+  gl_FragColor = vec4(litColor, 1.0);
 
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -278,10 +321,6 @@ export default function Grass() {
       "aParams",
       new THREE.InstancedBufferAttribute(blades.params, 4),
     );
-    g.setAttribute(
-      "aShade",
-      new THREE.InstancedBufferAttribute(blades.shade, 1),
-    );
     g.instanceCount = blades.count;
 
     const trail = Array.from(
@@ -297,14 +336,33 @@ export default function Grass() {
       uniforms: THREE.UniformsUtils.merge([
         THREE.UniformsLib.fog,
         {
+          // Animation and interaction
           uTime: { value: 0 },
           uWind: { value: WIND },
           uRadius: { value: PUSH_RADIUS },
           uFadeStart: { value: FADE_START },
           uFadeEnd: { value: FADE_END },
+          uTrail: { value: trail },
+
+          // Grass colours
           uBase: { value: new THREE.Color(BASE_COLOR) },
           uTip: { value: new THREE.Color(TIP_COLOR) },
-          uTrail: { value: trail },
+          uShadeColor: { value: new THREE.Color(SHADE_COLOR) },
+          uBackLight: { value: BACK_LIGHT },
+
+          // Shared scene lighting
+          uSunDirection: {
+            value: new THREE.Vector3(...LIGHTING.sunPosition).normalize(),
+          },
+          uAmbient: {
+            value: LIGHTING.ambientIntensity,
+          },
+          uSunIntensity: {
+            value: LIGHTING.sunIntensity,
+          },
+          uSunColor: {
+            value: new THREE.Color(LIGHTING.sunColor),
+          },
         },
       ]),
     });

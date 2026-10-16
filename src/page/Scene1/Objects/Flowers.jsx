@@ -2,9 +2,9 @@ import { Suspense, useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { ground } from "./PointerGround";
-import { terrainHeight, WATER_LEVEL } from "./TerrainHeight";
-
+import { ground } from "../Settings/PointerGround";
+import { terrainHeight, WATER_LEVEL } from "../Environment/TerrainHeight";
+import { CLOUD_SHADOW_GLSL } from "../Environment/CloudShadow";
 // ─────────────────────────────────────────────────────────────
 // Flowers: two instanced layers, one draw call each.
 //   WHITE: a small cluster of 5 tiny flowers is ONE instance (so 14k instances
@@ -15,7 +15,7 @@ import { terrainHeight, WATER_LEVEL } from "./TerrainHeight";
 // the ground, nearby flowers LEAN TOWARD it and GLOW brighter.
 // ─────────────────────────────────────────────────────────────
 
-const WHITE_COUNT = 5500; // clusters. Lower this first if the integrated GPU struggles.
+const WHITE_COUNT = 3500; // clusters. Lower this first if the integrated GPU struggles.
 const WIND = 0.07; // sway strength
 const FADE_START = 20; // flowers start shrinking/thinning this far from the camera...
 const FADE_END = 62; // ...and are all gone by here
@@ -26,18 +26,25 @@ const COLOR_FLOWERS = [
   {
     node: "flower_purple",
     cutout: true,
-    count: 1800,
+    count: 1100,
     seed: 47,
-    spread: 20,
-    patchPow: 2,
-    patchOffset: [-17, 21],
+    spread: 18,
+    patchPow: 1.3,
+    patchOffset: [-2, 0],
+    // Near the screen
+    region: {
+      x0: -30,
+      x1: 30,
+      z0: 8,
+      z1: -44,
+    },
     height: 0.45,
     glow: "#e2b8ff",
   },
   {
     node: "flower_red",
     cutout: true,
-    count: 1000,
+    count: 1200,
     seed: 59,
     spread: 18,
     patchPow: 2,
@@ -257,6 +264,9 @@ const vertexShader = /* glsl */ `
   varying float vShade;
   varying float vRand;
   varying float vGlow;
+  varying vec3 vCloud;
+
+  ${CLOUD_SHADOW_GLSL}
 
   #include <fog_pars_vertex>
 
@@ -312,6 +322,10 @@ const vertexShader = /* glsl */ `
     vShade = aShade;
     vRand = rnd;
     vGlow = hover;
+    
+    // Sample the shadow at the flower's ROOT (aOffset.xz), not each vertex, so
+    // the whole flower is shaded evenly and nothing shimmers as the shadow slides.
+    vCloud = cloudShadeMul(aOffset.xz, uTime);
 
     #include <fog_vertex>
   }
@@ -323,6 +337,7 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uCenter;
   uniform vec3 uPetalInner;
   uniform vec3 uPetalTip;
+  varying vec3 vCloud;
   uniform vec3 uGlow;
 
   varying float vTone;
@@ -342,9 +357,10 @@ const fragmentShader = /* glsl */ `
     // Petals keep most of their brightness so whites stay white in shade.
     vec3 col = mix(stem * vShade, head * mix(1.0, vShade, 0.6), petal);
     col *= 0.92 + 0.16 * vRand; // small per-instance variation
+    col *= vCloud; // cloud shadow: darker and cooler under a cloud
 
     // Hover glow: brighter petals plus a soft tint.
-    col = col * (1.0 + 0.35 * vGlow * petal) + uGlow * vGlow * 0.30 * petal;
+    col = col * (1.0 + 0.35 * vGlow * petal) + uGlow * vGlow * 0.85 * petal;
 
     gl_FragColor = vec4(col, 1.0);
 
@@ -357,6 +373,7 @@ const fragmentShader = /* glsl */ `
 // Fragment shader for the GLB flowers: texture colour + the same shading and glow.
 const texFragmentShader = /* glsl */ `
   uniform sampler2D uMap;
+  varying vec3 vCloud;
   uniform vec3 uGlow;
 
   varying vec2 vUv;
@@ -380,6 +397,7 @@ const texFragmentShader = /* glsl */ `
     col *= mix(1.0, vShade, 0.6);
     col *= mix(0.55, 1.0, smoothstep(0.0, 0.45, vH));
     col *= 0.92 + 0.16 * vRand; // per-instance variation
+    col *= vCloud; // cloud shadow
 
     // Hover glow only on the upper part (the bloom), not the stem.
     float head = smoothstep(0.4, 0.85, vH);

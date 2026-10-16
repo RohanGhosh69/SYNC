@@ -2,7 +2,7 @@ import { useMemo, useRef } from "react";
 import { useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { terrainHeight } from "./TerrainHeight";
+import { terrainHeight } from "../Environment/TerrainHeight";
 
 // Update this path to match your rock model's location.
 const MODEL_PATH = "/model/stone.glb";

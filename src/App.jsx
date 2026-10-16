@@ -6,8 +6,7 @@ export default function App() {
     <div
       className="relative min-h-screen"
       style={{
-        backgroundImage:
-          "linear-gradient(180deg, #B8E3FF 0%, #DDF2FF 45%, #F0F8FF 75%, #FFF4E8 100%)",
+        backgroundColor: "red", // for testing purpose only.
         backgroundAttachment: "fixed",
       }}
     >

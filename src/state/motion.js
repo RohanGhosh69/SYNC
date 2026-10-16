@@ -2,6 +2,7 @@
 export const motion = {
   progress: 0, // 0..1 scroll progress of the current page
   velocity: 0, // Lenis scroll velocity (drives motion blur)
+  fly: 0, // 0..1 door fly-through (driven by DoorTransition)
 }
 
 export const audio = {

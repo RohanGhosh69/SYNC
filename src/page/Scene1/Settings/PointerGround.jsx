@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { terrainHeight, WATER_LEVEL } from "./TerrainHeight";
+import { terrainHeight, WATER_LEVEL } from "../Environment/TerrainHeight";
 
 // ─────────────────────────────────────────────────────────────
 // PointerGround: turns "where is the mouse on screen" into
@@ -123,9 +123,15 @@ export default function PointerGround() {
       if (ground.active) {
         m.position.set(ground.point.x, ground.point.y + 0.05, ground.point.z);
         // Grow with distance so it stays visible far away.
-        m.scale.setScalar(Math.max(1, state.camera.position.distanceTo(ground.point) * 0.04));
+        m.scale.setScalar(
+          Math.max(1, state.camera.position.distanceTo(ground.point) * 0.04),
+        );
         // Brighter when the mouse moves fast, so you can see `speed` working.
-        m.material.opacity = THREE.MathUtils.clamp(0.35 + ground.speed * 0.25, 0.35, 1);
+        m.material.opacity = THREE.MathUtils.clamp(
+          0.35 + ground.speed * 0.25,
+          0.35,
+          1,
+        );
         // White on land, cyan over the lake.
         m.material.color.set(ground.onWater ? "#46d9ff" : "#ffffff");
       }

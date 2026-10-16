@@ -7,6 +7,7 @@ import { motion } from "../../../state/motion";
 // Where the door stands. Everything else is measured from this.
 const DOOR = new THREE.Vector3(0, 0, -44);
 const DOOR_HEIGHT = 6;
+const FLY_DIST = 16; // how far the camera glides at the end
 
 // Camera path: start = the reference POV (low, door small in the distance),
 // end = close-up of the door. The middle points just shape a gentle rise.
@@ -35,6 +36,14 @@ export default function CameraRig() {
     path.getPointAt(t, state.camera.position);
 
     look.lerpVectors(LOOK_START, LOOK_END, t);
+
+    // Fly-through (0..1): glide forward past the door.
+    const f = motion.fly;
+    if (f > 0) {
+      state.camera.position.z -= f * FLY_DIST;
+      state.camera.position.y += (LOOK_END.y - state.camera.position.y) * f; // settle to door-middle height
+      look.z -= f * 30; // keep looking ahead, never back at the door
+    }
     state.camera.lookAt(look);
   });
 
