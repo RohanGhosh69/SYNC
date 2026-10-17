@@ -11,6 +11,8 @@ import SceneLighting from "../page/Scene1/Settings/SceneLight";
 import SkyDome from "../page/Scene1/Environment/SkyDome";
 import EndHaze from "../page/Scene1/Settings/EndHaze";
 
+
+
 // Picks which 3D scene is mounted for the current phase.
 // Add HeroScene / EndingScene / BreakScene here as they get built.
 export default function SceneRouter() {
@@ -30,7 +32,7 @@ export default function SceneRouter() {
           <Grass />
           <Stones />
           <Flowers />
-          <Water />
+          <Water /> 
         </>
       );
     default:

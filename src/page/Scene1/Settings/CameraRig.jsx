@@ -9,6 +9,43 @@ const DOOR = new THREE.Vector3(0, 0, -44);
 const DOOR_HEIGHT = 6;
 const FLY_DIST = 16; // how far the camera glides at the end
 
+// Lightweight materials for the procedural door.
+
+/// Lightweight materials for the procedural door.
+
+// Frame — Clean soft pinkish white
+const FRAME_MATERIAL = new THREE.MeshStandardMaterial({
+  color: "#F8C8DC", // Lavender blush / soft white-pink
+  //roughness: 0.35,
+  metalness: 0.0,
+});
+
+// Entire door — Vibrant soft light pink
+const DOOR_MATERIAL = new THREE.MeshStandardMaterial({
+  color: "#F8C8DC", // True Light Pink
+  //roughness: 0.35,
+  metalness: 0.0,
+});
+
+// Door panels — Lighter pastel blush pink
+const PANEL_MATERIAL = new THREE.MeshStandardMaterial({
+  color: "#F8C8DC", // Soft Pastel Pink
+ // roughness: 0.3,
+  metalness: 0.0,
+});
+
+// Decorative trim — Bright soft white
+const TRIM_MATERIAL = new THREE.MeshStandardMaterial({
+  color: "#F8C8DC",
+  metalness: 0.0,
+});
+
+// Handle — Warm light satin gold
+const GOLD_MATERIAL = new THREE.MeshStandardMaterial({
+  color: "#F4D068",
+  roughness: 0.25,
+  metalness: 0.7,
+});
 // Camera path: start = the reference POV (low, door small in the distance),
 // end = close-up of the door. The middle points just shape a gentle rise.
 const CAMERA_POINTS = [
@@ -53,18 +90,147 @@ export default function CameraRig() {
 // This provides GRID.
 const DEBUG = true;
 
+function DoorBox({ position, size, material }) {
+  return (
+    <mesh
+      position={position}
+      material={material}
+      castShadow={false}
+      receiveShadow={false}
+    >
+      <boxGeometry args={size} />
+    </mesh>
+  );
+}
+
+function InsetPanel({
+  y,
+  borderHeight,
+  centerHeight,
+  halfY,
+  leafWidth,
+  leafDepth,
+}) {
+  const z = leafDepth / 2 + 0.018;
+  const borderWidth = 2.28;
+  const sideX = 1.112;
+
+  return (
+    <group position={[leafWidth / 2, y, z]}>
+      {[
+        { position: [0, halfY, 0], size: [borderWidth, 0.055, 0.035] },
+        { position: [0, -halfY, 0], size: [borderWidth, 0.055, 0.035] },
+        { position: [-sideX, 0, 0], size: [0.055, borderHeight, 0.035] },
+        { position: [sideX, 0, 0], size: [0.055, borderHeight, 0.035] },
+      ].map((part, i) => (
+        <DoorBox key={i} {...part} material={TRIM_MATERIAL} />
+      ))}
+      <DoorBox
+        position={[0, 0, -0.006]}
+        size={[2.15, centerHeight, 0.018]}
+        material={PANEL_MATERIAL}
+      />
+    </group>
+  );
+}
+
 function DebugMarkers() {
+  const frameWidth = 3.7;
+  const postWidth = 0.24;
+  const frameDepth = 0.34;
+  const leafWidth = 3.05;
+  const leafHeight = 5.56;
+  const leafDepth = 0.14;
+  const leafBaseY = 0.14;
+  const hingeX = DOOR.x - leafWidth / 2;
+  const openAngle = THREE.MathUtils.degToRad(24);
+
+  const frameParts = [
+    {
+      position: [
+        DOOR.x - frameWidth / 2 + postWidth / 2,
+        DOOR_HEIGHT / 2,
+        DOOR.z,
+      ],
+      size: [postWidth, DOOR_HEIGHT, frameDepth],
+    },
+    {
+      position: [
+        DOOR.x + frameWidth / 2 - postWidth / 2,
+        DOOR_HEIGHT / 2,
+        DOOR.z,
+      ],
+      size: [postWidth, DOOR_HEIGHT, frameDepth],
+    },
+    {
+      position: [DOOR.x, DOOR_HEIGHT - 0.14, DOOR.z],
+      size: [frameWidth, 0.28, frameDepth],
+    },
+    {
+      position: [DOOR.x, 0.07, DOOR.z + 0.025],
+      size: [frameWidth, 0.14, 0.42],
+    },
+  ];
+
+  const panels = [
+    { y: 4.35, borderHeight: 1.48, centerHeight: 1.35, halfY: 0.72 },
+    { y: 1.72, borderHeight: 1.85, centerHeight: 1.72, halfY: 0.91 },
+  ];
+
   return (
     <group>
-      {/* Floor grid: 2-unit squares, pink centre line along the path 
-      <gridHelper args={[200, 100, "#ff5fa2", "#2a2f55"]} position={[0, 0, -50]} />
-      */}
+      {frameParts.map((part, i) => (
+        <DoorBox key={`frame-${i}`} {...part} material={FRAME_MATERIAL} />
+      ))}
 
-      {/* Door stand-in: 3.7 wide x 6 tall, matching the reference proportions */}
-      <mesh position={[DOOR.x, DOOR_HEIGHT / 2, DOOR.z]}>
-        <boxGeometry args={[3.7, DOOR_HEIGHT, 0.6]} />
-        <meshBasicMaterial color="#f4a3b5" />
-      </mesh>
+      {[-1.49, 1.49].map((x) => (
+        <DoorBox
+          key={`trim-${x}`}
+          position={[DOOR.x + x, DOOR_HEIGHT / 2 - 0.07, DOOR.z + 0.19]}
+          size={[0.045, DOOR_HEIGHT - 0.52, 0.035]}
+          material={TRIM_MATERIAL}
+        />
+      ))}
+
+      <group
+        position={[hingeX, leafBaseY, DOOR.z + 0.19]}
+        rotation={[0, openAngle, 0]}
+      >
+        <DoorBox
+          position={[leafWidth / 2, leafHeight / 2, 0]}
+          size={[leafWidth, leafHeight, leafDepth]}
+          material={DOOR_MATERIAL}
+        />
+
+        {panels.map((panel, i) => (
+          <InsetPanel
+            key={i}
+            {...panel}
+            y={panel.y - leafBaseY}
+            leafWidth={leafWidth}
+            leafDepth={leafDepth}
+          />
+        ))}
+
+        <mesh
+          position={[leafWidth - 0.27, 2.85 - leafBaseY, leafDepth / 2 + 0.075]}
+          material={GOLD_MATERIAL}
+          castShadow={false}
+          receiveShadow={false}
+        >
+          <sphereGeometry args={[0.09, 8, 6]} />
+        </mesh>
+        <DoorBox
+          position={[leafWidth - 0.27, 2.85 - leafBaseY, leafDepth / 2 + 0.035]}
+          size={[0.12, 0.22, 0.04]}
+          material={GOLD_MATERIAL}
+        />
+        {/* Black plane behind the door */}
+        <mesh position={[1.7, DOOR_HEIGHT / 2, -0.2]}>
+          <planeGeometry args={[4.0, DOOR_HEIGHT - 0.4]} />
+          <meshBasicMaterial color="#000000" side={THREE.DoubleSide} />
+        </mesh>
+      </group>
     </group>
   );
 }

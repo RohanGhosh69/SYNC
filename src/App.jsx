@@ -1,5 +1,6 @@
 import SmoothScroll from "./core/SmoothScroll";
 import ExperienceCanvas from "./core/ExpCanvas";
+import Background from "./page/Scene1/Components/Background";
 
 export default function App() {
   return (
@@ -15,7 +16,7 @@ export default function App() {
       <ExperienceCanvas />
 
       <main className="pointer-events-none relative z-10 h-[400vh]">
-        {/* DOM text, logos and UI will go here in step 5 */}
+        <Background />
       </main>
     </div>
   );

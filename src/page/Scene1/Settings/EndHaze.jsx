@@ -9,8 +9,8 @@ const START = 0.42; // Scroll progress where fog begins to appear.
 
 // back = distance behind the door, w/h = plane size, o = max opacity
 const LAYERS = [
-  { back: 3, w: 110, h: 34, o: 0.42 },
-  { back: 12, w: 180, h: 52, o: 0.28 },
+  { back: 3, w: 110, h: 34, o: 0.60 },
+  { back: 12, w: 180, h: 52, o: 0.54 },
 ];
 
 function makeTexture() {

@@ -18,3 +18,27 @@
   /* Special Elements */
   --color-highlight: #F0BD48;
 }
+
+@font-face {
+  font-family: "DreamHeading";
+  src: url("/fonts/Poppins_Complete/OTF/Poppins-ExtraBold.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DreamContent";
+  src: url("/fonts/Quicksand_Complete/OTF/Quicksand-SemiBold.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DreamHero";
+  src: url("/fonts/italianno/Italianno-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}

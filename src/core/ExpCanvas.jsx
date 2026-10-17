@@ -27,15 +27,14 @@ export default function ExperienceCanvas(props) {
         // fully transparent clear colour: whatever is behind the canvas shows through
         onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
       >
-
         {/* Suspense: shows nothing while models/textures load, then reveals the scene */}
         <Suspense fallback={null}>
           {/* props are passed straight through, so SceneRouter gets whatever App gives it */}
           <SceneRouter {...props} />
         </Suspense>
       </Canvas>
+      <BlurOverlay />
       <DoorTransition />
-    <BlurOverlay />
     </div>
   );
 }
